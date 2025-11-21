@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>💧 Economic Pipe Diameter Calculator</title>
+<style>
+body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #e0f7fa;
+    color: #004d40;
+    text-align: center;
+    padding: 20px;
+}
+h1 { font-size: 2em; margin-bottom: 5px; }
+h2 { font-size: 1.2em; color: #00796b; margin-top: 0; }
+.container {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 30px;
+    margin-top: 20px;
+}
+.inputs, .results {
+    background: #ffffff;
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 3px 3px 15px rgba(0,0,0,0.2);
+    width: 380px;
+}
+input, select { 
+    width: 120px; 
+    margin: 5px;
+    border-radius: 5px;
+    border: 1px solid #00796b;
+    text-align: center;
+}
+button {
+    background: #00796b;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    margin-top: 10px;
+}
+button:hover { background: #004d40; }
+
+/* Pipe graphic */
+.pipe {
+    margin-top: 20px;
+    height: 40px;
+    background: linear-gradient(90deg,#29b6f6,#0288d1);
+    border-radius: 20px;
+    margin-left: auto;
+    margin-right: auto;
+    position: relative;
+    overflow: hidden;
+}
+.pipe-label {
+    position: absolute;
+    top: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: yellow;
+    font-weight: bold;
+}
+
+/* Chart container */
+#costChartContainer {
+    margin-top: 20px;
+}
+</style>
+</head>
+<body>
+
+<h1>💧 Economic Pipe Diameter Calculator</h1>
+<h2>Interactive Version with Costs & Graphs</h2>
+
+<div class="container">
+  <div class="inputs">
+    <h3>Pipe Parameters</h3>
+    <p>Pipe length (ft): <input id="L" value="5000"></p>
+    <p>Flow rate (gal/min): <input id="Q" value="200"></p>
+    
+    <p>Fluid: 
+      <select id="fluid" onchange="updateFluidProperties()">
+        <option value="water">Water (20°C)</option>
+        <option value="ethanol">Ethanol</option>
+        <option value="glycerin">Glycerin</option>
+        <option value="kerosene">Kerosene</option>
+        <option value="mercury">Mercury</option>
+      </select>
+    </p>
+    <p>Density (lb/ft³): <input id="rho" value="62.3"></p>
+    <p>Viscosity (lb/(ft·s)): <input id="mu" value="0.000672"></p>
+    
+    <p>Pipe Material: 
+      <select id="material" onchange="updateRoughness()">
+        <option value="0.0018" selected>Carbon Steel</option>
+        <option value="0.0000015">PVC</option>
+        <option value="0.0025">Cast Iron</option>
+        <option value="0.0030">Concrete</option>
+        <option value="0.0015">Copper</option>
+      </select>
+    </p>
+    <p>Roughness (in): <input id="eps" value="0.0018"></p>
+    <p>Initial diameter (in): <input id="D0" value="3"></p>
+    
+    <h3>Cost Parameters</h3>
+    <p>PP ($/in·ft): <input id="PP" value="2"></p>
+    <p>CC: <input id="CC" value="0.4"></p>
+    <p>PC: <input id="PC" value="0.04"></p>
+    
+    <button onclick="calculate()">Calculate 💦</button>
+  </div>
+
+  <div class="results">
+    <h3>Results</h3>
+    <p id="output"></p>
+    <div class="pipe" id="pipe"><span class="pipe-label" id="pipe-label"></span></div>
+    <div id="costChartContainer">
+      <canvas id="costChart" width="350" height="250"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+const fluidProperties = {
+    water: {rho: 62.3, mu: 0.000672},
+    ethanol: {rho: 49.3, mu: 0.00048},
+    glycerin: {rho: 119, mu: 0.06},
+    kerosene: {rho: 51.2, mu: 0.0022},
+    mercury: {rho: 849, mu: 0.00153}
+};
+
+function updateFluidProperties() {
+    const fluid = document.getElementById("fluid").value;
+    document.getElementById("rho").value = fluidProperties[fluid].rho;
+    document.getElementById("mu").value = fluidProperties[fluid].mu;
+}
+
+function updateRoughness() {
+    const materialSelect = document.getElementById("material");
+    const epsInput = document.getElementById("eps");
+    epsInput.value = materialSelect.value;
+}
+
+function calculate() {
+    const L = parseFloat(document.getElementById("L").value);
+    const Q = parseFloat(document.getElementById("Q").value);
+    const rho = parseFloat(document.getElementById("rho").value);
+    const eps = parseFloat(document.getElementById("eps").value);
+    const D0 = parseFloat(document.getElementById("D0").value);
+    const mu = parseFloat(document.getElementById("mu").value);
+    const PP = parseFloat(document.getElementById("PP").value);
+    const CC = parseFloat(document.getElementById("CC").value);
+    const PC = parseFloat(document.getElementById("PC").value);
+    const pi = Math.PI;
+
+    const D0_ft = D0/12;
+    const rel_roughness = eps/D0;
+    const mass_flow = Q*rho/7.4805;
+    const velocity = 0.4085*Q/(D0*D0);
+    const Re = rho*velocity*D0_ft/mu;
+
+    const termone = Math.pow(20000*rel_roughness + 1e6/Re, 1/3);
+    const termtwo = 1 + termone;
+    const f = Re < 2000 ? 16/Re : 0.001375*termtwo;
+
+    const con = 0.0715;
+    const termthree = PC*10*f;
+    const termfour = Math.pow(mass_flow,3);
+    const termfive = Math.pow(4/pi,2);
+    const termsix = Math.pow(1/rho,2);
+    const termseven = termthree*termfour*termfive*termsix;
+    const termeight = CC*PP;
+    const termnine = Math.pow(termseven/termeight, 1/6);
+    const D_econ_ft = parseFloat((termnine*con).toFixed(3));
+    const D_econ_in = parseFloat((D_econ_ft*12).toFixed(2));
+    const D_econ_m = parseFloat((D_econ_ft*0.3048).toFixed(3));
+
+    const purchase = PP*D_econ_in*L;
+    const capital = CC*purchase;
+    const pumping = PC*mass_flow;
+    const total = capital + pumping;
+
+    document.getElementById("output").innerHTML = `
+<b>Velocity:</b> ${velocity.toFixed(2)} ft/s<br>
+<b>Relative roughness:</b> ${rel_roughness.toFixed(5)}<br>
+<b>Mass flow:</b> ${mass_flow.toFixed(2)} lb/min<br>
+<b>Re:</b> ${Re.toFixed(0)}<br>
+<b>Friction factor:</b> ${f.toFixed(5)}<br>
+<b>Economic diameter:</b> ${D_econ_ft} ft ≈ ${D_econ_in} in ≈ ${D_econ_m} m<br>
+<b>Purchase price:</b> $${purchase.toFixed(2)}<br>
+<b>Capital cost:</b> $${capital.toFixed(2)}<br>
+<b>Pumping cost:</b> $${pumping.toFixed(2)}<br>
+<b>Total annual cost:</b> $${total.toFixed(2)}
+`;
+
+    // Pipe graphic
+    const pipeEl = document.getElementById("pipe");
+    const labelEl = document.getElementById("pipe-label");
+    const width = Math.min(350, D_econ_ft*400);
+    pipeEl.style.width = width + "px";
+    labelEl.innerText = `${D_econ_ft} ft`;
+
+    // Line chart for costs
+    const diameters = [];
+    const purchaseData = [];
+    const capitalData = [];
+    const pumpingData = [];
+    const totalData = [];
+
+    for (let d = D_econ_ft*0.5; d <= D_econ_ft*1.5; d+=0.01) {
+        diameters.push(d.toFixed(2));
+        const d_in = d*12;
+        const purchase_c = PP*d_in*L;
+        const capital_c = CC*purchase_c;
+        const pumping_c = PC*mass_flow;
+        const total_c = capital_c + pumping_c;
+        purchaseData.push(purchase_c);
+        capitalData.push(capital_c);
+        pumpingData.push(pumping_c);
+        totalData.push(total_c);
+    }
+
+    const ctx = document.getElementById('costChart').getContext('2d');
+    if(window.costChartInstance) window.costChartInstance.destroy();
+    window.costChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: diameters,
+            datasets: [
+                {label:'Purchase', data: purchaseData, borderColor:'#FF7043', fill:false},
+                {label:'Capital', data: capitalData, borderColor:'#66BB6A', fill:false},
+                {label:'Pumping', data: pumpingData, borderColor:'#42A5F5', fill:false},
+                {label:'Total', data: totalData, borderColor:'#AB47BC', fill:false}
+            ]
+        },
+        options: {
+            responsive:true,
+            plugins: {legend: {position:'top'}},
+            scales: {
+                x: {title:{display:true,text:'Diameter (ft)'}},
+                y: {title:{display:true,text:'Cost ($)'}}
+            }
+        }
+    });
+}
+</script>
+
+</body>
+</html>
